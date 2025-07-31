@@ -11,7 +11,7 @@
 
 #define uart0_tx 0
 #define uart0_rx 1
-#define FLASH_TARGET_OFFSET (PICO_FLASH_SIZE_BYTES - FLASH_SECTOR_SIZE)
+#define FLASH_TARGET_OFFSET (PICO_FLASH_SIZE_BYTES - 2*FLASH_SECTOR_SIZE)
 
 char buf[64];  // 64 bytes buffer for strings
 int *p, addr;
@@ -54,7 +54,6 @@ void read_flash_strings() {
 void write_to_flash(char *input_buffer) {
     // Thay vì gán số, bạn có thể sao chép string vào buf
     strcpy(buf, input_buffer);
-
     if (first_empty_page < 0){
         printf("Full sector, erasing...\n");
         uint32_t ints = save_and_disable_interrupts();
@@ -63,15 +62,23 @@ void write_to_flash(char *input_buffer) {
         restore_interrupts(ints);
     }
     uint32_t ints = save_and_disable_interrupts();
-    flash_range_program(FLASH_TARGET_OFFSET + (first_empty_page*FLASH_PAGE_SIZE), 
-                       (uint8_t *)buf, FLASH_PAGE_SIZE);
-    restore_interrupts(ints);
+    flash_range_program(FLASH_TARGET_OFFSET + (first_empty_page*FLASH_PAGE_SIZE), (uint8_t *)buf, FLASH_PAGE_SIZE);
     first_empty_page++;
+    flash_range_erase(PICO_FLASH_SIZE_BYTES - FLASH_SECTOR_SIZE, FLASH_SECTOR_SIZE);
+    flash_range_program(PICO_FLASH_SIZE_BYTES - FLASH_SECTOR_SIZE, (uint8_t *)&first_empty_page, FLASH_PAGE_SIZE);
+    restore_interrupts(ints);
     if (first_empty_page >= FLASH_SECTOR_SIZE/FLASH_PAGE_SIZE) {
         first_empty_page = -1; // Mark sector as full
     }
 }
-
+int test;
+void what_empty_page(int *q){
+    addr = (XIP_BASE + PICO_FLASH_SIZE_BYTES - FLASH_SECTOR_SIZE);
+    p = (int *)addr;
+    *q = *p; // Trả về địa chỉ của trang trống
+    printf(" (at1 0x%08x) = ", (unsigned int)p);
+    printf("empty page1= %d\n", *p);
+}
 // String input function
 void my_gets(char *buffer, int maxlen) {
     int idx = 0;
@@ -125,7 +132,8 @@ int main() {
     irq_set_exclusive_handler(UART0_IRQ, on_uart_rx);
     irq_set_enabled(UART0_IRQ, true);
     uart_set_irq_enables(uart0, true, false);
-
+    
+    what_empty_page(&first_empty_page); // Lấy trang trống đầu tiên
     while(1) {
         /* if(data_ready) {
             // Xử lý dữ liệu đã nhận từ UART
